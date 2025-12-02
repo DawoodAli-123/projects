@@ -74,11 +74,11 @@ Reduced manual reporting time significantly
 
 📫 Connect With Me
 
-Email: dawoodalishaik02@gmail.com
+📧 Email: dawoodalishaik02@gmail.com
 
-LinkedIn: www.linkedin.com/in/dawood-ali-shaik
+🔗 LinkedIn: https://www.linkedin.com/in/dawood-ali-shaik
 
-GitHub: DawoodAli-123
+💻 GitHub: https://github.com/DawoodAli-123
 
 ⭐ GitHub Stats
 
