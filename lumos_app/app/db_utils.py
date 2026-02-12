@@ -23,3 +23,13 @@ def execute_query(query, params=None, fetch=False):
         return result
     finally:
         connection_pool.putconn(conn)
+
+
+# Then routes become clean:
+
+# from app.db_utils import execute_query
+
+# @user_bp.route("/")
+# def get_users():
+#     users = execute_query("SELECT * FROM users", fetch=True)
+#     return {"data": users}
