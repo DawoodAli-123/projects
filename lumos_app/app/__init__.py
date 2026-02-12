@@ -1,23 +1,19 @@
 from flask import Flask
-from config import Config
-from extensions import db, jwt, migrate
-from routes import register_blueprints
-import git
-import os
-import psycopg2
-from psycopg2 import pool
+from .routes import register_blueprints
+from .config import load_db_config
+from .extensions import init_db_pool
 
-def create_app(config_class=Config):
+
+def create_app():
     app = Flask(__name__)
 
-    # Load config
-    app.config.from_object(config_class)
+    # Load DB config
+    db_config = load_db_config()
 
-    # Init extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
+    # Initialize connection pool
+    init_db_pool(db_config)
 
-    # Register blueprints
+    # Register routes
     register_blueprints(app)
 
     return app
