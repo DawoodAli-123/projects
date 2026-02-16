@@ -8,6 +8,7 @@ from .testreports import testreports_bp
 from .user_details import user_bp
 from .userstory import userstory_bp
 from .ut_cst import utcst_bp
+from .reports import reports_bp
 
 def register_blueprints(app):
     app.register_blueprint(testcases_bp, url_prefix="/testcases")
@@ -20,3 +21,4 @@ def register_blueprints(app):
     app.register_blueprint(user_bp, url_prefix="/users")
     app.register_blueprint(userstory_bp, url_prefix="/user-stories")
     app.register_blueprint(utcst_bp, url_prefix="/ut-cst")
+    app.register_bleprint(reports_bp, url_prifix="/reports")
