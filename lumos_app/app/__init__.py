@@ -1,16 +1,17 @@
 from flask import Flask
 from .routes import register_blueprints
-from .config import load_db_config
+from .config import load_db_config, Config
 from .extensions import init_db_pool
 
 
 def create_app():
     app = Flask(__name__)
 
-    # Load DB config
-    db_config = load_db_config()
+    # Load BASE_DIR and other app config
+    app.config.from_object(Config)
 
-    # Initialize connection pool
+    # Load DB config separately
+    db_config = load_db_config()
     init_db_pool(db_config)
 
     # Register routes
