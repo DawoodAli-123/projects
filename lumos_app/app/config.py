@@ -25,3 +25,5 @@ def load_db_config():
 # --------- APP CONFIG ----------
 class Config:
     BASE_DIR = os.path.abspath("safe/config/files")
+    MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB limit
+
