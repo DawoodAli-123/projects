@@ -8,19 +8,28 @@
 
 from app.extensions import connection_pool
 
-def execute_query(query, params=None, fetch=False):
+def execute_query(query, params=None, fetch=None, commit=False):
     conn = connection_pool.getconn()
     try:
         cursor = conn.cursor()
         cursor.execute(query, params)
 
-        if fetch:
+        result = None
+
+        if fetch == "one":
+            result = cursor.fetchone()
+        elif fetch == "all":
             result = cursor.fetchall()
-        else:
+
+        if commit:
             conn.commit()
-            result = None
 
         return result
+
+    except Exception as e:
+        conn.rollback()   # 🔥 VERY IMPORTANT
+        raise e           # Let route handle the error
+
     finally:
         connection_pool.putconn(conn)
 
