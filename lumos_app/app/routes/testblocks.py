@@ -1,8 +1,10 @@
 from flask import Blueprint, request, jsonify
 from ..services.activitylog import log_activity
 from ..db_utils import execute_query
+from ..extensions import connection_pool
 
 testblocks_bp = Blueprint("testblocks", __name__)
+
 
 @testblocks_bp.route("/list", methods=["GET"])
 def testblocks_list():
@@ -206,154 +208,148 @@ def save_testblock():
 
 
 # API to update an existing Test Block by replacing its steps in the Reuseable_pack table
-
-@app.route('/api/update_testblock', methods=['PUT'])
-
+@testblocks_bp.route('/update', methods=['PUT'])
 def update_testblock():
 
-data request.json
+    data = request.get_json(silent=True)
 
-testblockname data.get('testblockName', '').strip() steplist = data.get('stepList')
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
 
-username data.get('userName','').strip()
+    testblockname = data.get('testblockName', '').strip()
+    steplist = data.get('stepList')
+    username = data.get('userName', '').strip()
 
-if not testblockname:
+    if not testblockname:
+        return jsonify({'error': 'Invalid Test Block selected.'}), 400
 
-return jsonify({'error': 'Invalid Test Block selected. '}), 400
+    if not username:
+        return jsonify({'error': 'User name is missing.'}), 400
 
-if not username:
+    try:
+        # Check existence
+        count = execute_query(
+            """
+            SELECT COUNT(*)
+            FROM lumos.reuseable_pack
+            WHERE blockname = %s AND inactiveflag = %s
+            """,
+            (testblockname, 'N'),
+            fetch="one"
+        )
 
-return jsonify({'error': 'User name is missing. Please refresh the application.'), 400
+        if count[0] == 0:
+            return jsonify({
+                'error': f"Testblock {testblockname} does not exist."
+            }), 400
 
-conn = connection_pool.getconn()
+        # Start manual transaction
+        conn = connection_pool.getconn()
 
-try:
+        try:
+            cursor = conn.cursor()
 
-cursor = conn.cursor()
+            # Delete old steps
+            cursor.execute("DELETE FROM lumos.reuseable_pack WHERE blockname = %s", (testblockname,))
 
-#Check if the testblock exists
+            # Insert new steps
+            for step_number, item in enumerate(steplist, start=1):
 
-cursor.execute("SELECT count(*) FROM Lumos. Reuseable_pack WHERE blockname=%s AND Inactiveflag = %s", (testblockname, 'N'))
+                cursor.execute("""
+                    INSERT INTO lumos.reuseable_pack
+                    (
+                        lastupdby,
+                        blockname,
+                        step,
+                        element,
+                        action,
+                        errorcode,
+                        defaultvalue,
+                        variable,
+                        update_flag,
+                        lastupd
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        'YES',
+                        DATE_TRUNC('second', CURRENT_TIMESTAMP)
+                    )
+                """, (
+                    username,
+                    testblockname,
+                    step_number,
+                    item.get('Element'),
+                    item.get('Action'),
+                    item.get('ErrorCode'),
+                    item.get('Value'),
+                    item.get('Variable')
+                ))
 
-if cursor.fetchone() [0] == 0:
+            conn.commit()  # Commit once
 
-return jsonify({'error': f"Testblock (testblockname) does not exist."}), 400
+            log_activity(
+                username,
+                action='Update',
+                testcasename='',
+                blockname=testblockname
+            )
 
-try:
+            return jsonify({
+                'message': f"Test Block {testblockname} updated successfully."
+            }), 200
 
-#Delete from Reuseable_pack
+        except Exception as error:
+            conn.rollback()  # Rollback everything
+            return jsonify({
+                'error': f"Update failed: {str(error)}"
+            }), 500
 
-cursor.execute("DELETE FROM Lumos. Reuseable pack WHERE blockname %s", (testblockname,))
+        finally:
+            connection_pool.putconn(conn)
 
-# Insert into Reuseable_pack
+    except Exception as e:
+        return jsonify({'error': f"Failed at update_testblock: {str(e)}"}), 500
 
-for step, item in enumerate (steplist, start=1):
-
-step_type item['StepType']
-
-element item['Element']
-
-action item['Action']
-
-errorcode = item['ErrorCode']
-
-regvalue item['Value']
-
-var_value item['Variable']
-
-update_flag item['UpdateFlag']
-
-if step type == 'Non Reuseable and element == 'Plain action' and action == 'Action':
-
-continue
-
-if step_type == 'Non Reuseable':
-
-cursor.execute(
-
-INSERT INTO Lumos. Reuseable_pack
-
-(lastupdby, blockname, step, element, action, errorcode, defaultvalue, variable, update_flag, lastupd) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, DATE TRUNC('second', CURRENT_TIMESTAMP))",
-
-(username, testblockname, step, element, action, errorcode, regvalue, var_value, update_flag)
-
-else:
-
-cursor.execute(
-
-'''INSERT INTO Lumos.Reuseable_pack
-(lastupdby, blockname, step, element, action, errorcode, defaultvalue, variable, update flag, lastupd) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, DATE TRUNC('second', CURRENT_TIMESTAMP))''',
-(username, testblockname, step, step type, 'Reuseable', errorcode, regvalue, var_value, update_flag)
-
-except Exception as error:
-
-conn.rollback() # Rollback in case of error
-
-log_activity(username username, action='Update failed', testcasename=", blockname=testblockname)
-
-return jsonify("Testblock Updation Failed!: {}".format(error)), 400
-
-#Log activity
-
-log_activity(username username, action='Update', testcasename, blockname=testblockname)
-
-conn.commit()
-
-return jsonify({'message': f" Test Block (testblockname) updated."}), 200
-
-except Exception as e:
-
-return jsonify({'error': f"Failed at update_testblock: {str(e)}"}), 400
-
-finally:
-
-cursor.close()
-
-connection_pool.putconn(conn)
 
 # API to Soft-delete a Test Block by marking it inactive in Reuseable_pack tables
-
-@app.route('/api/delete_testblock', methods=['PUT'])
+@testblocks_bp.route('/delete', methods=['PUT'])
 def delete_testblock():
 
-conn connection_pool.getconn()
+    data = request.get_json(silent=True)
 
-data request.json
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
 
-testblock_name data.get('testblock_name')
+    testblock_name = data.get('testblock_name')
+    username = data.get('userName', '').strip()
 
-username data.get('userName', '').strip()
+    if not testblock_name or not username:
+        return jsonify({'error': 'Test Block Name and User Name are required'}), 400
 
-if not testblock_name or not username:
+    try:
+        delete_query = """
+            UPDATE lumos.reuseable_pack
+            SET inactiveflag = %s,
+                lastupdby = %s,
+                lastupd = DATE_TRUNC('second', CURRENT_TIMESTAMP)
+            WHERE blockname = %s
+        """
 
-return jsonify({'error': 'Test Block Name and User Name are required'}), 400
+        execute_query(
+            delete_query,
+            ('Y', username, testblock_name),
+            commit=True
+        )
 
-try:
+        # Log deletion
+        log_activity(
+            username,
+            action='Delete',
+            testcasename='',
+            blockname=testblock_name
+        )
 
-try:
+        return jsonify({'message': f'Testblock {testblock_name} deleted successfully'}), 200
 
-cursor = conn.cursor()
-
-delete_query= "UPDATE Lumos.reuseable_pack SET Inactiveflag=%s, lastupdby WHERE blockname = %s''. %s, lastupd DATE TRUNC('second', CURRENT_TIMESTAMP)
-
-cursor.execute(delete_query, ('Y', username, testblock_name,))
-
-#Log the deletion activity
-
-log_activity(username, action='Delete', testcasename='', blockname=testblock_name)
-
-conn.commit()
-
-return jsonify({'message': f'Testblock (testblock_name} deleted successfully'), 200
-
-except Exception as e:
-
-conn.rollback() # Rollback in case of any exception
-
-log_activity(username username, action 'Delete failed', testcasename=", blockname=testblock_name)
-return jsonify("Testblock deletion Failed!: {}".format(e)), 400
-
-except Exception as e:
-
-return jsonify({'error': f"Failed at delete_testblock: {str(e)}"}), 400
-
+    except Exception as e:
+        return jsonify({'error': f"Failed at delete_testblock: {str(e)}"}), 500
