@@ -204,3 +204,156 @@ def save_testblock():
     except Exception as e:
         return jsonify({'error': f"Failed at save_testblock: {str(e)}"}), 500
 
+
+# API to update an existing Test Block by replacing its steps in the Reuseable_pack table
+
+@app.route('/api/update_testblock', methods=['PUT'])
+
+def update_testblock():
+
+data request.json
+
+testblockname data.get('testblockName', '').strip() steplist = data.get('stepList')
+
+username data.get('userName','').strip()
+
+if not testblockname:
+
+return jsonify({'error': 'Invalid Test Block selected. '}), 400
+
+if not username:
+
+return jsonify({'error': 'User name is missing. Please refresh the application.'), 400
+
+conn = connection_pool.getconn()
+
+try:
+
+cursor = conn.cursor()
+
+#Check if the testblock exists
+
+cursor.execute("SELECT count(*) FROM Lumos. Reuseable_pack WHERE blockname=%s AND Inactiveflag = %s", (testblockname, 'N'))
+
+if cursor.fetchone() [0] == 0:
+
+return jsonify({'error': f"Testblock (testblockname) does not exist."}), 400
+
+try:
+
+#Delete from Reuseable_pack
+
+cursor.execute("DELETE FROM Lumos. Reuseable pack WHERE blockname %s", (testblockname,))
+
+# Insert into Reuseable_pack
+
+for step, item in enumerate (steplist, start=1):
+
+step_type item['StepType']
+
+element item['Element']
+
+action item['Action']
+
+errorcode = item['ErrorCode']
+
+regvalue item['Value']
+
+var_value item['Variable']
+
+update_flag item['UpdateFlag']
+
+if step type == 'Non Reuseable and element == 'Plain action' and action == 'Action':
+
+continue
+
+if step_type == 'Non Reuseable':
+
+cursor.execute(
+
+INSERT INTO Lumos. Reuseable_pack
+
+(lastupdby, blockname, step, element, action, errorcode, defaultvalue, variable, update_flag, lastupd) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, DATE TRUNC('second', CURRENT_TIMESTAMP))",
+
+(username, testblockname, step, element, action, errorcode, regvalue, var_value, update_flag)
+
+else:
+
+cursor.execute(
+
+'''INSERT INTO Lumos.Reuseable_pack
+(lastupdby, blockname, step, element, action, errorcode, defaultvalue, variable, update flag, lastupd) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, DATE TRUNC('second', CURRENT_TIMESTAMP))''',
+(username, testblockname, step, step type, 'Reuseable', errorcode, regvalue, var_value, update_flag)
+
+except Exception as error:
+
+conn.rollback() # Rollback in case of error
+
+log_activity(username username, action='Update failed', testcasename=", blockname=testblockname)
+
+return jsonify("Testblock Updation Failed!: {}".format(error)), 400
+
+#Log activity
+
+log_activity(username username, action='Update', testcasename, blockname=testblockname)
+
+conn.commit()
+
+return jsonify({'message': f" Test Block (testblockname) updated."}), 200
+
+except Exception as e:
+
+return jsonify({'error': f"Failed at update_testblock: {str(e)}"}), 400
+
+finally:
+
+cursor.close()
+
+connection_pool.putconn(conn)
+
+# API to Soft-delete a Test Block by marking it inactive in Reuseable_pack tables
+
+@app.route('/api/delete_testblock', methods=['PUT'])
+def delete_testblock():
+
+conn connection_pool.getconn()
+
+data request.json
+
+testblock_name data.get('testblock_name')
+
+username data.get('userName', '').strip()
+
+if not testblock_name or not username:
+
+return jsonify({'error': 'Test Block Name and User Name are required'}), 400
+
+try:
+
+try:
+
+cursor = conn.cursor()
+
+delete_query= "UPDATE Lumos.reuseable_pack SET Inactiveflag=%s, lastupdby WHERE blockname = %s''. %s, lastupd DATE TRUNC('second', CURRENT_TIMESTAMP)
+
+cursor.execute(delete_query, ('Y', username, testblock_name,))
+
+#Log the deletion activity
+
+log_activity(username, action='Delete', testcasename='', blockname=testblock_name)
+
+conn.commit()
+
+return jsonify({'message': f'Testblock (testblock_name} deleted successfully'), 200
+
+except Exception as e:
+
+conn.rollback() # Rollback in case of any exception
+
+log_activity(username username, action 'Delete failed', testcasename=", blockname=testblock_name)
+return jsonify("Testblock deletion Failed!: {}".format(e)), 400
+
+except Exception as e:
+
+return jsonify({'error': f"Failed at delete_testblock: {str(e)}"}), 400
+
