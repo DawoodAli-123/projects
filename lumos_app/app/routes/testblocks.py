@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from ..activitylog import log_activity
+from ..services.activitylog import log_activity
 from ..db_utils import execute_query
 
 testblocks_bp = Blueprint("testblocks", __name__)
