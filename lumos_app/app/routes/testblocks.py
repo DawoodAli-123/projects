@@ -33,19 +33,9 @@ def testblocks_list():
             WHERE rn = 1
         """
 
-        result = execute_query(query, fetch="all") or []
+        testblocks = execute_query(query, fetch="all") or []
 
-        response = [
-            {
-                "blockname": row[0],
-                "act_date": row[1],
-                "lumos_user": row[2],
-                "action_type": row[3]
-            }
-            for row in result
-        ]
-
-        return jsonify(response), 200
+        return jsonify(testblocks), 200
 
     except Exception as e:
         return jsonify({"error": f"Failed at testblocks list: {str(e)}"}), 500
@@ -179,7 +169,7 @@ def save_testblock():
                 testblockname,
                 step_number,
                 element if step_type == 'Non Reuseable' else step_type,
-                action,
+                action if step_type == 'Non Reuseable' else 'Reuseable',
                 errorcode,
                 regvalue,
                 var_value
