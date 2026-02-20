@@ -33,7 +33,7 @@ def testblocks_list():
             WHERE rn = 1
         """
 
-        result = execute_query(query, fetch="all")
+        result = execute_query(query, fetch="all") or []
 
         response = [
             {
@@ -49,12 +49,6 @@ def testblocks_list():
 
     except Exception as e:
         return jsonify({"error": f"Failed at testblocks list: {str(e)}"}), 500
-  
-
-from flask import Blueprint, request, jsonify
-from ..db_utils import execute_query
-
-testblocks_bp = Blueprint("testblocks", __name__)
 
 
 @testblocks_bp.route("/edit", methods=["GET"])
