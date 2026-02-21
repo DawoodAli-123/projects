@@ -2,10 +2,8 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 from ..db_utils import execute_query
 from ..services.activitylog import log_activity
-
-# If you have these services, uncomment them
-# from ..services.execution_processor import processsubmittedrecords
-# from ..services.container_manager import stop_containers_by_execution_id
+from ..services.processsubmit import processsubmittedrecords
+from ..services.stop_containers import stop_containers_by_execution_id
 
 testexecutions_bp = Blueprint("executions", __name__)
 
