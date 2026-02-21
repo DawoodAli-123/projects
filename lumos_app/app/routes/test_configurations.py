@@ -1,6 +1,6 @@
 from flask import current_app, Blueprint, render_template, request, jsonify
-from .config_tab import get_page_info
-from werkzeug.utils import secure_filename
+from ..services.config_tab import get_page_info
+from ..services.file_utils import list_files 
 import os
 
 configurations_bp = Blueprint("configurations", __name__)
