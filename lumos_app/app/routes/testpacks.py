@@ -1,302 +1,242 @@
-#API endpoint to get all Test Packs from the Testpack list table
+from flask import Blueprint, request, jsonify
+from ..db_utils import execute_query
+from ..services.activitylog import log_activity
 
-@app.route('/api/testpacklist', methods=['GET'])
+testpacks_bp = Blueprint("testpacks", __name__)
 
+
+# ---------------------------------------------------
+# 1️⃣ Get All Test Packs
+# ---------------------------------------------------
+@testpacks_bp.route('/list', methods=['GET'])
 def get_testpacklist():
+    try:
+        query = """
+            SELECT DISTINCT testpack_name,
+                   TO_CHAR(lastupd, 'YYYY-MM-DD HH24:MI:SS GMT') AS lastupd,
+                   lastupdby
+            FROM lumos.testpack_list
+            WHERE inactiveflag = 'N'
+            ORDER BY testpack_name
+        """
 
-conn connection_pool.getconn()
+        rows = execute_query(query, fetch="all") or []
 
-try:
+        result = [
+            {
+                "testpack_name": r[0],
+                "lastupd": r[1],
+                "lastupdby": r[2]
+            }
+            for r in rows
+        ]
 
-cursor conn.cursor()
+        return jsonify(result), 200
 
-cursor.execute('SELECT DISTINCT testpack_name, TO_CHAR(lastupd, 'YYYY-MM-DD HH24:MI:SS GMT') AS lastupd, lastupdby FROM lumos.testpack list WHERE Inactiveflag 'N' ORDER BY testpack_name')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-testpacks cursor.fetchall()
 
-except Exception as e:
-
-return jsonify({'error': f"Failed at testpacklist: {str(e)}")), 400
-
-finally:
-
-cursor.close()
-
-connection_pool.putconn(conn)
-
-return jsonify (testpacks), 200
-
-#API endpoint to retrieve a list of all active test cases @app.route("/api/populate_testcases', methods=['GET'])
-
+# ---------------------------------------------------
+# 2️⃣ Populate Active Testcases
+# ---------------------------------------------------
+@testpacks_bp.route('/populate_testcases', methods=['GET'])
 def populate_testcases():
+    try:
+        query = """
+            SELECT DISTINCT testcasename
+            FROM lumos.testcase_list
+            WHERE inactiveflag = 'N'
+            ORDER BY testcasename
+        """
 
-conn connection_pool.getconn()
+        rows = execute_query(query, fetch="all") or []
 
-try:
+        return jsonify({
+            "TestcasesList": [r[0] for r in rows]
+        }), 200
 
-cursor conn.cursor()
-cursor.execute("SELECT DISTINCT testcasename FROM Lumos. TESTCASE LIST WHERE Inactiveflag = %s ORDER BY testcasename", ('N'))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-testcaseslist = [item[8] for item in cursor.fetchall()]1
 
-return jsonify({"TestcasesList": testcaseslist}), 200
-
-except Exception as e:
-
-return jsonify({'error': f"Failed at populate_testcases: {str(e)}"}), 400
-
-finally:
-
-cursor.close()
-
-connection_pool.putconn(conn)
-
-#API endpoint to retrieve test cases associated with a given test pack and those not yet included in it
-
-@app.route('/api/edit_testpack', methods=['GET'])
-
+# ---------------------------------------------------
+# 3️⃣ Edit Test Pack
+# ---------------------------------------------------
+@testpacks_bp.route('/edit', methods=['GET'])
 def edit_testpack():
 
-testpack_name = request.args.get('testpack name
+    testpack_name = request.args.get('testpackName')
 
-if not testpack_name:
+    if not testpack_name:
+        return jsonify({'error': 'Test Pack Name is required'}), 400
 
-return jsonify({'error': 'Missing input: Test Pack Name must be specified. '}), 488
+    try:
+        # Testcases inside pack
+        query1 = """
+            SELECT DISTINCT testcasename
+            FROM lumos.testpack_list
+            WHERE testpack_name = %s
+              AND inactiveflag = 'N'
+              AND testcasename IS NOT NULL
+            ORDER BY testcasename
+        """
 
-conn connection_pool.getconn()
+        pack_cases = execute_query(query1, (testpack_name,), fetch="all") or []
 
-try:
+        # Active testcases NOT in pack
+        query2 = """
+            SELECT DISTINCT t.testcasename
+            FROM lumos.testcase_list t
+            WHERE t.inactiveflag = 'N'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM lumos.testpack_list tp
+                  WHERE tp.testpack_name = %s
+                    AND tp.testcasename = t.testcasename
+                    AND tp.inactiveflag = 'N'
+              )
+            ORDER BY t.testcasename
+        """
 
-cursor conn.cursor()
+        other_cases = execute_query(query2, (testpack_name,), fetch="all") or []
 
-#Query 1: Retrieve all test cases currently included in the specified test pack
+        return jsonify({
+            "testpack_testcases": [r[0] for r in pack_cases],
+            "testcases": [r[0] for r in other_cases]
+        }), 200
 
-#Filters out null entries and returns a distinct, alphabetically ordered List
-select_query1 =
-
-SELECT DISTINCT testcasename FROM Lumos.TESTPACK LIST WHERE testpack_name %s AND testcasename IS NOT NULL ORDER BY testcasename;
-
-cursor.execute(select_query1, (testpack_name,))
-
-testpack_testcases cursor.fetchall()
-
-#Query 2: Retrieve all active test cases that are NOT part of the specified test pack
-
-# Uses NOT EXISTS for efficient exclusion and ensures only active test cases are returned
-
-select_query2 =
-
-SELECT DISTINCT t2.testcasename FROM Lumos. TESTCASE LIST 12 WHERE 12. Inactiveflag = 'N' AND NOT EXISTS (SELECT 1 FROM Lumos. TESTPACK LIST ti WHERE t1.testpack_name %s AND t1.testcasename ORDER BY 12.testcasename; t2.testcasename)
-
-cursor.execute(select_query2, (testpack_name,))
-
-testcases cursor.fetchall()
-
-response = {
-
-}
-
-'testpack_testcases': [row for row in tes pack testcases),
-
-'testcases': [row for row in testcases]
-
-except Exception as e:
-
-return jsonify({'error': f"Failed at edit testpack: {str(e))"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-#API endpoint to create and save a new Test Pack with selected Test Cases
-
-@app.route('/api/save_testpack', methods=['POST'])
-
+# ---------------------------------------------------
+# 4️⃣ Save Test Pack
+# ---------------------------------------------------
+@testpacks_bp.route('/save', methods=['POST'])
 def save_testpack():
 
-data request.json
+    data = request.get_json(silent=True)
 
-testpackname data.get('testpackName','').strip()
+    testpackname = data.get('testpackName', '').strip()
+    testcaselist = data.get('testcaseList', [])
+    username = data.get('userName', '').strip()
 
-testcaselist data.get('testcaselist', [])
+    if not testpackname or not username:
+        return jsonify({'error': 'Missing required fields'}), 400
 
-username data.get('userName','').strip()
+    if not testcaselist:
+        return jsonify({'error': 'Empty test pack'}), 400
 
-if not testpackname:
+    try:
+        count = execute_query(
+            """SELECT COUNT(*) FROM lumos.testpack_list
+               WHERE testpack_name = %s AND inactiveflag = 'N'""",
+            (testpackname,),
+            fetch="one"
+        )
 
-cursor.close()
+        if count[0] != 0:
+            return jsonify({'error': 'Test Pack already exists'}), 400
 
-return jsonify({'error': 'Test Pack name is a mandatory field.']), 400
+        for tc in testcaselist:
+            execute_query("""
+                INSERT INTO lumos.testpack_list
+                (created_by, lastupdby, testpack_name,
+                 testcasename, inactiveflag, lastupd)
+                VALUES (%s, %s, %s, %s,
+                        'N', DATE_TRUNC('second', CURRENT_TIMESTAMP))
+            """, (username, username, testpackname, tc),
+               commit=True)
 
-if not username:
+        log_activity(username,
+                     action='Create',
+                     testcasename=f'Pack: {testpackname}',
+                     blockname='')
 
-return jsonify({'error': 'User name is missing. Please refresh the application,), 400
+        return jsonify({'message': 'Test Pack created successfully'}), 201
 
-if not testcaselist:
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-return jsonify({'error': 'Empty test pack. Please add at least one test case. '}), 400
 
-conn connection_pool.getconn()
-
-try:
-
-cursor conn.cursor()
-
-#Check if the Test Pack exists
-
-cursor.execute("SELECT COUNT(*) FROM Lumos.testpack_list WHERE testpack_name %s AND Inactiveflag = %s", (testpackname, 'N'))
-
-if cursor.fetchone() [0] != 0:
-return jsonify({'error': f"Testpack (testpackname) already exists."}), 400
-
-if testcaselist:
-
-cursor.executemany (
-
-)
-
-"INSERT INTO lumos.testpack_list (created_by, lastupdby, testpack_name, testcasename, lastupd) VALUES (%s, %s, %s, %s, DATE_TRUNC('second', CURRENT_TIMESTAMP((ייי,
-
-[(username, username, testpackname, tc) for tc in testcaselist]
-
-log_activity(username, action='Create', testcasename='Pack: testpackname, blockname='')
-
-conn.commit()
-
-return jsonify({'message': f"Testpack {testpackname) Created successfully."}), 200
-
-except Exception as e:
-
-return jsonify({'error': f"Failed at save_testpack: {str(e)}"}), 400
-
-finally:
-
-cursor.close()
-
-connection_pool.putconn(conn)
-
-#API to update a Test Pack by replacing its test cases in the Testpack_list table
-
-@app.route('/api/update_testpack', methods=['PUT'])
-
+# ---------------------------------------------------
+# 5️⃣ Update Test Pack
+# ---------------------------------------------------
+@testpacks_bp.route('/update', methods=['PUT'])
 def update_testpack():
 
-data request.json
+    data = request.get_json(silent=True)
 
-testpackname data.get('testpackName','').strip()
+    testpackname = data.get('testpackName', '').strip()
+    new_testcases = data.get('testcaseList', [])
+    username = data.get('userName', '').strip()
 
-newtestcases = data.get('testcaseList', [])
+    if not testpackname or not username:
+        return jsonify({'error': 'Missing required fields'}), 400
 
-username = data.get('userName','').strip()
+    try:
+        execute_query(
+            "DELETE FROM lumos.testpack_list WHERE testpack_name = %s",
+            (testpackname,),
+            commit=True
+        )
 
-if not testpackname:
+        for tc in new_testcases:
+            execute_query("""
+                INSERT INTO lumos.testpack_list
+                (created_by, lastupdby, testpack_name,
+                 testcasename, inactiveflag, lastupd)
+                VALUES (%s, %s, %s, %s,
+                        'N', DATE_TRUNC('second', CURRENT_TIMESTAMP))
+            """, (username, username, testpackname, tc),
+               commit=True)
 
->
+        log_activity(username,
+                     action='Update',
+                     testcasename=f'Pack: {testpackname}',
+                     blockname='')
 
-return jsonify({'error': 'Invalid Test Pack selected.'}), 400
+        return jsonify({'message': 'Test Pack updated successfully'}), 200
 
-if not username:
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-return jsonify({'error': 'User name is missing. Please refresh the application.'}), 400
 
-conn connection_pool.getconn()
-
-try:
-
-cursor conn.cursor()
-
-#Check if the Test Pack exists
-
-cursor.execute("SELECT COUNT(*) FROM Lumos.testpack_list WHERE testpack_name %s AND Inactiveflag = %s", (testpackname, 'N')) if cursor.fetchone() [0] == 0: return jsonify({'error': f"Test Pack (testpackname) does not exist."}), 400
-
-try:
-
-#Delete existing Test Pack
-
-cursor.execute("DELETE FROM lumos.testpack list WHERE testpack_name %s", (testpackname,))
-
-#Insert all test cases (new and old)
-
-if newtestcases:
-
-cursor.executemany (
-
-'''INSERT INTO Lumos.testpack list (lastupdby, created_by, testpack_name, testcasename, lastupd) VALUES (%s, %s, %s, %s, DATE TRUNC('second', CURRENT_TIMESTAMP))''',
-[(username, username, testpackname, tc,) for tc in
-
-newtestcases]
-
-except Exception as error:
-
-conn.rollback() # Rollback in case of error
-
-log_activity(username=username, action='Update failed', testcasename='Pack: + testpackname, blockname='')
-
-return jsonify(" Test Pack Updation Failed!: {}".format(error)), 400
-
-#Log activity
-
-log_activity(username=username, action='Update', testcasename='Pack: testpackname, blockname='')
-
-conn.commit()
-
-return jsonify({'message': f" Test Cases updated for Test Pack (testpackname)."}), 200
-
-except Exception as e:
-
-return jsonify({'error': f"Failed at update testpack: (str(e)}"}), 400
-
-finally:
-
-cursor.close()
-
-connection_pool.putconn (conn)
-
-#API to Soft-delete a Test Pack by marking it inactive in Testpack List tables
-
-@app.route('/api/delete_testpack', methods=['PUT'])
-
+# ---------------------------------------------------
+# 6️⃣ Soft Delete Test Pack
+# ---------------------------------------------------
+@testpacks_bp.route('/delete', methods=['PUT'])
 def delete_testpack():
 
-conn connection_pool.getconn()
-data request.json
+    data = request.get_json(silent=True)
 
-testpackname data.get('testpackName')
+    testpackname = data.get('testpackName')
+    username = data.get('userName')
 
-username = data.get('userName', '').strip()
+    if not testpackname or not username:
+        return jsonify({'error': 'Missing required fields'}), 400
 
-if not testpackname or not username:
+    try:
+        affected = execute_query("""
+            UPDATE lumos.testpack_list
+            SET inactiveflag='Y',
+                lastupdby=%s,
+                lastupd=DATE_TRUNC('second', CURRENT_TIMESTAMP)
+            WHERE testpack_name=%s
+        """, (username, testpackname),
+           commit=True,
+           return_rowcount=True)
 
-return jsonify({'error': 'Test Pack Name and User Name are required')}), 400
+        if affected == 0:
+            return jsonify({'error': 'Test Pack not found'}), 404
 
-try:
+        log_activity(username,
+                     action='Delete',
+                     testcasename=f'Pack: {testpackname}',
+                     blockname='')
 
-try:
+        return jsonify({'message': 'Test Pack deleted successfully'}), 200
 
-cursor = conn.cursor()
-
-delete_query='UPDATE lumos.testpack_list SET Inactiveflag = %s, lastupdby = %s, Lastupd DATE_TRUNC('second', CURRENT_TIMESTAMP) WHERE testpack_name %s'
-
-cursor.execute(delete_query, ('Y', username, testpackname))
-
-#Log the deletion activity
-
-log_activity(username=username, action='Delete', testcasename="Pack: testpackname, blockname='")
-
-conn.commit()
-
-return jsonify({'message': f'Testpack (testpackname} deleted successfully'}), 200
-
-except Exception as error:
-
-conn.rollback() # Rollback in case of error
-
-log_activity(username username, action 'Delete failed', testcasename='Pack: testpackname, blockname=)
-
-return jsonify("Testpack deletion Failed!: {}".format(error)), 400
-except Exception as e:
-
-return jsonify({'error': f"Failed at delete_testpack: {str(e)}"}), 480
-
-Finally:
-
-cursor.close()
-
-connection_pool.putconn(conn)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
