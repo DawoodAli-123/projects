@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, session, redirect, url_for, rende
 from functools import wraps
 from ..db_utils import execute_query
 from ..services.activitylog import log_activity
+from ..services.login import authenticate_user
 
 user_bp = Blueprint("user", __name__)
 
@@ -35,15 +36,7 @@ def login():
         if not username or not password:
             return jsonify({'status': 'Missing credentials'}), 400
 
-        user = execute_query(
-            """SELECT username, type
-               FROM lumos.userlist
-               WHERE username=%s
-               AND password=%s
-               AND inactiveflag='N'""",
-            (username, password),
-            fetch="one"
-        )
+        user = authenticate_user(username, password)
 
         if user:
             session['username'] = user[0]
