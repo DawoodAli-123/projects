@@ -1,8 +1,10 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from ..db_utils import execute_query
 from ..services.config_tab import get_page_info 
 from ..services.file_utils import list_files    
 import os
+import io
+import zipfile
 
 testreports_bp = Blueprint("reports", __name__)
 
@@ -140,3 +142,66 @@ def get_execdetails():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------
+# Download Execution Folder (ZIP)
+# ---------------------------------------------------
+@testreports_bp.route('/api/download_exec_folder', methods=['POST'])
+def download_exec_folder():
+
+    data = request.get_json(silent=True)
+
+    rowid = data.get('rowid')
+    pagename = data.get('pageName')  # ExecutionReports or ExecutionLog
+
+    if not rowid or not pagename:
+        return jsonify({"error": "Missing rowid or pageName"}), 400
+
+    page_info = get_page_info(pagename)
+
+    if not page_info:
+        return jsonify({"error": "Invalid pageName"}), 400
+
+    # Build safe absolute path
+    folder_path = os.path.join(page_info['path'], rowid)
+    abs_folder_path = os.path.abspath(folder_path)
+    base_path = os.path.abspath(page_info['path'])
+
+    # Security check (prevent path traversal)
+    if not abs_folder_path.startswith(base_path):
+        return jsonify({"error": "Access denied"}), 403
+
+    if not os.path.isdir(abs_folder_path):
+        return jsonify({"error": "Folder not found"}), 404
+
+    # Set ZIP file name
+    if pagename == "ExecutionReports":
+        zip_filename = f"{rowid}.zip"
+    elif pagename == "ExecutionLog":
+        zip_filename = f"{rowid}_log.zip"
+    else:
+        return jsonify({"error": "Invalid pageName"}), 400
+
+    try:
+        # Create ZIP in memory
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(abs_folder_path):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, abs_folder_path)
+                    zipf.write(full_path, arcname=rel_path)
+
+        zip_buffer.seek(0)
+
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=zip_filename
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
